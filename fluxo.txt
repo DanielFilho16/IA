@@ -1,0 +1,22 @@
+
+
+1. Coleta e Pré-processamento de Dados: Pessoa 1
+- Carregar o banco de dados
+- Tratar valores faltantes e outliers
+- Normalizar/scale os dados
+2. Análise Exploratória de Dados: Pessoa 2
+- Entender a distribuição dos atributos
+- Verificar correlações entre os atributos
+- Identificar padrões e tendências
+3. Feature Engineering: Pessoa 3
+- Criar novas features a partir dos atributos existentes (por exemplo, calcular a idade do imóvel)
+- Selecionar as features mais relevantes para o modelo
+4. Modelagem: Pessoa 4 e Pessoa 5
+- Treinar e testar diferentes modelos de regressão (por exemplo, Linear Regression, Decision Trees, Random Forest, Gradient Boosting)
+- Ajustar hiperparâmetros e avaliar o desempenho dos modelos
+5. Avaliação e Métricas: Pessoa 6
+- Calcular métricas de desempenho (por exemplo, Mean Absolute Error, Mean Squared Error, R-squared)
+- Comparar os resultados dos diferentes modelos
+6. Implantação e Visualização: Pessoa 7
+- Implantar o modelo escolhido em um ambiente de produção
+- Criar visualizações para apresentar os resultados (por exemplo, gráficos de dispersão, histogramas)

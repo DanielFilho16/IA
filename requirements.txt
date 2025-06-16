@@ -1,6 +1,4 @@
+tkinter
+ttkbootstrap
+tkintermapview
 pandas
-numpy
-matplotlib
-scikit-learn
-xgboost
-lightgbm

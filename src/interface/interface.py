@@ -1,42 +1,24 @@
 import os
 import sys
-# Allow importing dados1.py from src/
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import tkinter as tk
 from tkinter import ttk
 from tkintermapview import TkinterMapView
-from data_interface import DataInterface
-
-# importa as funções de ML
-from dados1 import (
-    prepare_training_data,
-    train_random_forest,
-    train_xgboost,
-    evaluate_model,
-    predict_for_property
-)
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
+import math
+import pandas as pd  # necessário para manipulação de DataFrame
 
 class ImovelApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Propriedades com Mapa")
 
-        # --- configura ML usando o CSV já limpo ---
-        # carrega o DataFrame limpo via DataInterface
-        self.data_iface = DataInterface("/home/baile/IA/data/dataset_cleaned.csv")
-        df_ml = self.data_iface.load()
-
-        # separa treino/teste e treina os modelos
-        X_train, X_test, y_train, y_test = prepare_training_data(df_ml)
-        self.rf_model  = train_random_forest(X_train, y_train)
-        self.xgb_model = train_xgboost   (X_train, y_train)
-
-        # avalia XGBoost para obter o R²
-        self.xgb_metrics = evaluate_model(self.xgb_model, X_test, y_test)
-
-        # lista de imóveis para a interface
-        self.lista_imoveis = self.data_iface.list_properties()
+        # --- leitura direta do CSV já limpo ---
+        csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/dataset_cleaned.csv"))
+        self.df = pd.read_csv(csv_path)
+        self.lista_imoveis = self.df.copy()
 
         # --- constrói GUI ---
         frame_top = tk.Frame(root)
@@ -44,7 +26,7 @@ class ImovelApp:
 
         self.combo_imovel = ttk.Combobox(
             frame_top,
-            values=self.lista_imoveis["PropertyID"].tolist(),
+            values=[f"Imovel {i+1}" for i in range(len(self.lista_imoveis))],
             width=30
         )
         self.combo_imovel.set("Selecione o imóvel")
@@ -57,12 +39,28 @@ class ImovelApp:
         )
         self.btn_detalhes.pack(side=tk.LEFT, padx=5)
 
+        # Botão para abrir o formulário de recomendação de bairro
+        self.btn_recomendar = tk.Button(
+            frame_top,
+            text="Recomendar Bairro e Imóvel",
+            command=self.abrir_formulario_recomendacao
+        )
+        self.btn_recomendar.pack(side=tk.LEFT, padx=5)
+
+        # Botão para abrir o formulário de avaliação de preço
+        self.btn_avaliar = tk.Button(
+            frame_top,
+            text="Avaliar Preço de Imóvel",
+            command=self.abrir_formulario_avaliacao
+        )
+        self.btn_avaliar.pack(side=tk.LEFT, padx=5)
+
         self.map_widget = TkinterMapView(root, width=820, height=500, corner_radius=0)
         self.map_widget.set_position(-37.8136, 144.9631)
         self.map_widget.set_zoom(10)
         self.map_widget.pack(pady=5)
 
-        self.label_info = tk.Label(root, text="", justify=tk.LEFT)
+        self.label_info = tk.Label(root, text="", justify=tk.LEFT, font=("Segoe UI", 11))
         self.label_info.pack(pady=5)
 
     def exibir_detalhes(self):
@@ -74,39 +72,216 @@ class ImovelApp:
         idx = int(escolha.replace("Imovel ", "")) - 1
 
         # dados cadastrais
-        dados = self.data_iface.get_property_info(idx + 1)
-        lat   = self.lista_imoveis.iloc[idx]["Lattitude"]
-        lon   = self.lista_imoveis.iloc[idx]["Longtitude"]
+        dados = self.lista_imoveis.iloc[idx]
+        lat   = dados.get("Latitude", "")
+        lon   = dados.get("Longitude", "")
+
+        def safe_str(val):
+            if pd.isnull(val):
+                return "N/A"
+            return str(val)
 
         info = [
-            f"Preço Real: {dados.get('Preço', 'N/A')}",
-            f"Quartos: {dados.get('Quartos', 'N/A')}",
-            f"Banheiros: {dados.get('Banheiros', 'N/A')}",
-            f"Garagem: {dados.get('Car', 'N/A')}",
-            f"Latitude: {lat}",
-            f"Longitude: {lon}"
-        ]
-
-        # previsão XGBoost
-        row  = self.data_iface.load().reset_index(drop=True).iloc[idx]
-        preds = predict_for_property(row, self.rf_model, self.xgb_model)
-        r2    = self.xgb_metrics['R2']
-        info += [
+            f"Subúrbio: {safe_str(dados.get('Subúrbio'))}",
+            f"Endereço: {safe_str(dados.get('Endereço'))}",
+            f"Salas: {safe_str(dados.get('Salas'))}",
+            f"Tipo: {safe_str(dados.get('Tipo'))}",
+            f"Preço real: {safe_str(dados.get('Preço real', dados.get('Preço')))}",
+            f"Preço estimado: {safe_str(dados.get('Preço estimado', dados.get('Preço estimado')))}",
+            f"Distância: {safe_str(dados.get('Distância'))}",
+            f"Código postal: {safe_str(dados.get('Código postal'))}",
+            f"Quartos: {safe_str(dados.get('Quartos'))}",
+            f"Banheiros: {safe_str(dados.get('Banheiros'))}",
+            f"Garagem: {safe_str(dados.get('Garagem'))}",
+            f"Tamanho do Terreno: {safe_str(dados.get('Tamanho do Terreno'))}",
+            f"Área Construída: {safe_str(dados.get('Área Construída'))}",
+            f"Ano de Construção: {safe_str(dados.get('Ano de Construção'))}",
+            f"Latitude: {safe_str(lat)}",
+            f"Longitude: {safe_str(lon)}",
+            f"Nome da Região: {safe_str(dados.get('Nome da Região'))}",
+            f"Quantidade de Imóveis na Região: {safe_str(dados.get('Quantidade de Imóveis na Região'))}",
             "",
-            f"Preço Previsto (XGBoost): R$ {preds['XGBoost']:.2f}",
-            f"R² (XGBoost): {r2:.4f}"
         ]
 
         self.label_info.config(text="\n".join(info))
 
         # atualiza o mapa
-        self.map_widget.set_position(lat, lon)
-        self.map_widget.set_zoom(14)
-        self.map_widget.delete_all_marker()
-        self.map_widget.set_marker(lat, lon, text=escolha)
+        if lat and lon:
+            self.map_widget.set_position(lat, lon)
+            self.map_widget.set_zoom(14)
+            self.map_widget.delete_all_marker()
+            self.map_widget.set_marker(lat, lon, text=escolha)
+
+    def abrir_formulario_recomendacao(self):
+        form = tk.Toplevel(self.root)
+        form.title("Recomendação de Bairro e Imóvel")
+        frame = ttk.Frame(form, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        # Campos do formulário
+        tk.Label(frame, text="Quantidade de carros:").grid(row=0, column=0, sticky="w", pady=2)
+        entry_carros = ttk.Entry(frame)
+        entry_carros.grid(row=0, column=1, pady=2)
+
+        tk.Label(frame, text="Quantidade de quartos:").grid(row=1, column=0, sticky="w", pady=2)
+        entry_quartos = ttk.Entry(frame)
+        entry_quartos.grid(row=1, column=1, pady=2)
+
+        tk.Label(frame, text="Preço máximo (R$):").grid(row=2, column=0, sticky="w", pady=2)
+        entry_preco = ttk.Entry(frame)
+        entry_preco.grid(row=2, column=1, pady=2)
+
+        resultado_label = tk.Label(frame, text="", justify=tk.LEFT, font=("Segoe UI", 10))
+        resultado_label.grid(row=4, column=0, columnspan=2, pady=10)
+
+        def buscar_melhor_bairro():
+            try:
+                carros = int(entry_carros.get())
+                quartos = int(entry_quartos.get())
+                preco_max = float(entry_preco.get())
+            except ValueError:
+                resultado_label.config(text="Preencha todos os campos corretamente.")
+                return
+
+            # Carrega o DataFrame de imóveis
+            df = self.df
+
+            # Filtra imóveis dentro do preço máximo
+            df_filtrado = df[df['Preço'] <= preco_max].copy()
+            if df_filtrado.empty:
+                resultado_label.config(text="Nenhum imóvel encontrado dentro do preço informado.")
+                return
+
+            # Calcula uma "distância" para cada imóvel em relação ao desejado
+            df_filtrado['distancia'] = (
+                abs(df_filtrado['Garagem'] - carros) +
+                abs(df_filtrado['Quartos'] - quartos)
+            )
+
+            # Encontra o imóvel com menor distância e menor preço
+            melhor_imovel = df_filtrado.sort_values(['distancia', 'Preço']).iloc[0]
+            melhor_bairro = melhor_imovel['Subúrbio']
+
+            info = [
+                f"Melhor bairro para você: {melhor_bairro}",
+                f"Imóvel recomendado:",
+                f"  Endereço: {melhor_imovel.get('Endereço', 'N/A')}",
+                f"  Preço: R$ {melhor_imovel['Preço']:.2f}",
+                f"  Quartos: {melhor_imovel['Quartos']}",
+                f"  Garagem: {melhor_imovel['Garagem']}",
+                f"  Tipo: {melhor_imovel.get('Tipo', 'N/A')}",
+            ]
+            resultado_label.config(text="\n".join(info))
+
+        btn_buscar = ttk.Button(frame, text="Buscar", command=buscar_melhor_bairro)
+        btn_buscar.grid(row=3, column=0, columnspan=2, pady=10)
+
+    def abrir_formulario_avaliacao(self):
+        form = tk.Toplevel(self.root)
+        form.title("Avaliação de Preço de Imóvel")
+        frame = ttk.Frame(form, padding=20)
+        frame.pack(fill="both", expand=True)
+
+        # Subúrbio
+        tk.Label(frame, text="Subúrbio (obrigatório):").grid(row=0, column=0, sticky="w", pady=2)
+        suburbios = sorted(self.df['Subúrbio'].dropna().unique())
+        combo_suburbio = ttk.Combobox(frame, values=suburbios, state="readonly")
+        combo_suburbio.grid(row=0, column=1, pady=2)
+
+        # Quartos
+        tk.Label(frame, text="Quartos (obrigatório):").grid(row=1, column=0, sticky="w", pady=2)
+        entry_quartos = ttk.Entry(frame)
+        entry_quartos.grid(row=1, column=1, pady=2)
+
+        # Banheiros
+        tk.Label(frame, text="Banheiros (obrigatório):").grid(row=2, column=0, sticky="w", pady=2)
+        entry_banheiros = ttk.Entry(frame)
+        entry_banheiros.grid(row=2, column=1, pady=2)
+
+        # Garagem
+        tk.Label(frame, text="Garagem (opcional):").grid(row=3, column=0, sticky="w", pady=2)
+        entry_garagem = ttk.Entry(frame)
+        entry_garagem.grid(row=3, column=1, pady=2)
+
+        # Ano de Construção
+        tk.Label(frame, text="Ano de Construção (opcional):").grid(row=4, column=0, sticky="w", pady=2)
+        entry_ano = ttk.Entry(frame)
+        entry_ano.grid(row=4, column=1, pady=2)
+
+        resultado_label = tk.Label(frame, text="", justify=tk.LEFT, font=("Segoe UI", 10))
+        resultado_label.grid(row=6, column=0, columnspan=2, pady=10)
+
+        def avaliar_preco():
+            suburbio = combo_suburbio.get()
+            quartos = entry_quartos.get()
+            banheiros = entry_banheiros.get()
+            garagem = entry_garagem.get()
+            ano = entry_ano.get()
+
+            # Validação obrigatórios
+            if not suburbio or not quartos or not banheiros:
+                resultado_label.config(text="Preencha Subúrbio, Quartos e Banheiros.")
+                return
+            try:
+                quartos = int(quartos)
+                banheiros = int(banheiros)
+                if not (0 <= quartos <= 30 and 0 <= banheiros <= 30):
+                    raise ValueError
+            except ValueError:
+                resultado_label.config(text="Quartos e Banheiros devem ser inteiros entre 0 e 30.")
+                return
+
+            # Garagem (opcional)
+            if garagem.strip():
+                try:
+                    garagem = int(garagem)
+                    if not (0 <= garagem <= 30):
+                        raise ValueError
+                except ValueError:
+                    resultado_label.config(text="Garagem deve ser inteiro entre 0 e 30 ou vazio.")
+                    return
+            else:
+                garagem = None
+
+            # Ano de construção (opcional)
+            if ano.strip():
+                try:
+                    ano = int(ano)
+                    if not (1900 <= ano <= 2025):
+                        raise ValueError
+                except ValueError:
+                    resultado_label.config(text="Ano de Construção deve ser entre 1900 e 2025 ou vazio.")
+                    return
+            else:
+                ano = None
+
+            # Busca imóveis similares no CSV
+            df = self.df
+            filtro = (
+                (df['Subúrbio'] == suburbio) &
+                (df['Quartos'] == quartos) &
+                (df['Banheiros'] == banheiros)
+            )
+            if garagem is not None:
+                filtro = filtro & (df['Garagem'] == garagem)
+            if ano is not None:
+                filtro = filtro & (df['Ano de Construção'] == ano)
+
+            similares = df[filtro]
+            if similares.empty:
+                resultado_label.config(text="Nenhum imóvel similar encontrado.")
+                return
+
+            preco_medio = similares['Preço'].mean()
+            resultado_label.config(
+                text=f"Preço médio dos imóveis similares: R$ {preco_medio:.2f}\n({len(similares)} encontrado(s))"
+            )
+
+        btn_avaliar = ttk.Button(frame, text="Avaliar", command=avaliar_preco)
+        btn_avaliar.grid(row=5, column=0, columnspan=2, pady=10)
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = ImovelApp(root)
-    root.mainloop()
+    app = tb.Window(themename="flatly")
+    ImovelApp(app)
+    app.mainloop()

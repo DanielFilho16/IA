@@ -18,6 +18,16 @@ class ImovelApp:
         # --- leitura direta do CSV já limpo ---
         csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/dataset_cleaned.csv"))
         self.df = pd.read_csv(csv_path)
+
+        # Garante que a coluna Preço é float, removendo símbolos se necessário
+        if self.df['Preço'].dtype != float:
+            self.df['Preço'] = (
+                self.df['Preço']
+                .astype(str)
+                .str.replace(r'[^\d.]', '', regex=True)
+                .replace('', '0')
+                .astype(float)
+            )
         self.lista_imoveis = self.df.copy()
 
         # --- constrói GUI ---
@@ -87,7 +97,7 @@ class ImovelApp:
             f"Salas: {safe_str(dados.get('Salas'))}",
             f"Tipo: {safe_str(dados.get('Tipo'))}",
             f"Preço real: {safe_str(dados.get('Preço real', dados.get('Preço')))}",
-            f"Preço estimado: {safe_str(dados.get('Preço estimado', dados.get('Preço estimado')))}",
+            f"Preço Previsto LightGBM: {safe_str(dados.get('Preço Previsto LightGBM', dados.get('Preço Previsto LightGBM')))}",
             f"Distância: {safe_str(dados.get('Distância'))}",
             f"Código postal: {safe_str(dados.get('Código postal'))}",
             f"Quartos: {safe_str(dados.get('Quartos'))}",

@@ -72,9 +72,9 @@ class ImovelApp:
         self.map_widget.set_zoom(10)
         self.map_widget.pack(fill=tk.BOTH, expand=True)
 
-        # --- label de informações abaixo ---
-        self.label_info = tk.Label(root, text="", justify=tk.LEFT, font=("Segoe UI", 11))
-        self.label_info.pack(fill=tk.X, padx=10, pady=5)
+
+        self.info_frame = tk.Frame(root)                 
+        self.info_frame.pack(fill=tk.BOTH, padx=10, pady=5)
 
     def exibir_detalhes(self):
         escolha = self.combo_imovel.get()
@@ -111,7 +111,24 @@ class ImovelApp:
             f"Quantidade de Imóveis na Região: {safe_str(dados.get('Quantidade de Imóveis na Região'))}",
             "",
         ]
-        self.label_info.config(text="\n".join(info))
+
+        for w in self.info_frame.winfo_children():
+            w.destroy()
+
+        cols = 3
+        rows = math.ceil(len(info) / cols)
+        for idx, txt in enumerate(info):
+            r = idx % rows
+            c = idx // rows
+            lbl = tk.Label(
+                self.info_frame,
+                text=txt,
+                font=("Arial", 11, "bold"),   
+                justify="center",
+            )
+            lbl.grid(row=r, column=c, sticky="w", padx=10, pady=2)
+
+        # self.label_info.config(text="\n".join(info))
 
         if lat and lon:
             self.map_widget.set_position(lat, lon)

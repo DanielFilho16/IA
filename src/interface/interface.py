@@ -14,7 +14,7 @@ class ImovelApp:
         self.root.title("Propriedades com Mapa")
         
         # Inicializa a interface de dados
-        self.data_iface = DataInterface("/home/baile/IA/data/dataset.csv")
+        self.data_iface = DataInterface("/home/baile/IA/data/dataset_cleaned.csv")
         self.lista_imoveis = self.data_iface.list_properties()
         
         # Frame para conter o ComboBox e o botão

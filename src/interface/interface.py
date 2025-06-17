@@ -76,6 +76,16 @@ class ImovelApp:
         self.info_frame = tk.Frame(root)                 
         self.info_frame.pack(fill=tk.BOTH, padx=10, pady=5)
 
+        # Exemplo: coordenadas aproximadas para alguns bairros
+        self.bairros_coords = {
+            "Richmond": [(-37.82, 144.99), (-37.82, 145.01), (-37.81, 145.01), (-37.81, 144.99), (-37.82, 144.99)],
+            "Hawthorn": [(-37.83, 145.03), (-37.83, 145.05), (-37.82, 145.05), (-37.82, 145.03), (-37.83, 145.03)],
+            "Fitzroy": [(-37.80, 144.97), (-37.80, 144.99), (-37.79, 144.99), (-37.79, 144.97), (-37.80, 144.97)],
+            "Carlton": [(-37.80, 144.96), (-37.80, 144.98), (-37.79, 144.98), (-37.79, 144.96), (-37.80, 144.96)],
+            "St Kilda": [(-37.87, 144.97), (-37.87, 144.99), (-37.86, 144.99), (-37.86, 144.97), (-37.87, 144.97)],
+        }
+        self.bairro_path = None
+
     def exibir_detalhes(self):
         escolha = self.combo_imovel.get()
         if not escolha.startswith("Imovel "):
@@ -142,6 +152,15 @@ class ImovelApp:
         frame = ttk.Frame(form, padding=20)
         frame.pack(fill="both", expand=True)
 
+        # Mensagem de orientação
+        msg = (
+            "O imóvel recomendado será destacado com um marcador especial no mapa.\n"
+            "Os demais imóveis do bairro aparecerão como círculos vermelhos claros."
+        )
+        tk.Label(frame, text=msg, justify="left", font=("Segoe UI", 9, "italic"), foreground="#b00").grid(
+            row=5, column=0, columnspan=2, pady=(0, 10), sticky="w"
+        )
+
         tk.Label(frame, text="Quantidade de carros:").grid(row=0, column=0, sticky="w", pady=2)
         entry_carros = ttk.Entry(frame)
         entry_carros.grid(row=0, column=1, pady=2)
@@ -157,6 +176,9 @@ class ImovelApp:
         resultado_label = tk.Label(frame, text="", justify=tk.LEFT, font=("Segoe UI", 10))
         resultado_label.grid(row=4, column=0, columnspan=2, pady=10)
 
+        # Armazena os paths dos círculos desenhados
+        drawn_circles = []
+
         def buscar_melhor_bairro():
             try:
                 carros = int(entry_carros.get())
@@ -166,9 +188,14 @@ class ImovelApp:
                 resultado_label.config(text="Preencha todos os campos corretamente.")
                 return
 
-            df_filtrado = self.df[self.df['Preço'] <= preco_max].copy()
+            # Agora exige pelo menos o número de quartos e garagem desejados
+            df_filtrado = self.df[
+                (self.df['Preço'] <= preco_max) &
+                (self.df['Quartos'] >= quartos) &
+                (self.df['Garagem'] >= carros)
+            ].copy()
             if df_filtrado.empty:
-                resultado_label.config(text="Nenhum imóvel encontrado dentro do preço informado.")
+                resultado_label.config(text="Nenhum imóvel encontrado dentro do preço e requisitos informados.")
                 return
 
             df_filtrado['distancia'] = (
@@ -185,10 +212,68 @@ class ImovelApp:
                 f"  Garagem: {melhor['Garagem']}",
                 f"  Tipo: {melhor.get('Tipo', 'N/A')}",
             ]
-            resultado_label.config(text="\n".join(info))
+            resultado_label.config(text="\n".join(info) + "\n\n(Imóveis do bairro destacados no mapa)")
+
+            # Marca o imóvel recomendado no mapa
+            lat = melhor.get("Latitude", None)
+            lon = melhor.get("Longitude", None)
+            self.map_widget.delete_all_marker()
+            if pd.notnull(lat) and pd.notnull(lon):
+                self.map_widget.set_position(lat, lon)
+                self.map_widget.set_zoom(14)
+                self.map_widget.set_marker(lat, lon, text="Imóvel recomendado")
+
+            # Limpa círculos anteriores antes de desenhar novos
+            for path in list(drawn_circles):
+                try:
+                    if hasattr(path, "delete"):
+                        path.delete()
+                    else:
+                        self.map_widget.delete_path(path)
+                except Exception:
+                    pass
+                drawn_circles.remove(path)
+            # Marca todos os imóveis do bairro no mapa como círculos transparentes (simulados)
+            bairro = melhor.get("Subúrbio", None)
+            if bairro:
+                imoveis_bairro = self.df[self.df['Subúrbio'] == bairro]
+                for _, row in imoveis_bairro.iterrows():
+                    lat_b = row.get("Latitude", None)
+                    lon_b = row.get("Longitude", None)
+                    if pd.notnull(lat_b) and pd.notnull(lon_b):
+                        import math
+                        circle_points = []
+                        radius = 0.002
+                        steps = 16
+                        for i in range(steps + 1):
+                            angle = 2 * math.pi * i / steps
+                            dlat = radius * math.cos(angle)
+                            dlon = radius * math.sin(angle)
+                            circle_points.append((lat_b + dlat, lon_b + dlon))
+                        path = self.map_widget.set_path(circle_points, color="#ff8888", width=2)
+                        drawn_circles.append(path)
 
         ttk.Button(frame, text="Buscar", command=buscar_melhor_bairro)\
             .grid(row=3, column=0, columnspan=2, pady=10)
+
+        def resetar_mapa():
+            # Remove todos os marcadores
+            self.map_widget.delete_all_marker()
+            # Remove todos os paths desenhados manualmente
+            for path in list(drawn_circles):
+                try:
+                    if hasattr(path, "delete"):
+                        path.delete()
+                    else:
+                        self.map_widget.delete_path(path)
+                except Exception:
+                    pass
+                drawn_circles.remove(path)
+            # Redefine o centro e zoom do mapa
+            self.map_widget.set_position(-37.8136, 144.9631)
+            self.map_widget.set_zoom(10)
+
+        form.protocol("WM_DELETE_WINDOW", lambda: (resetar_mapa(), form.destroy()))
 
     def abrir_formulario_avaliacao(self):
         form = tk.Toplevel(self.root)

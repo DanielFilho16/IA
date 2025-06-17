@@ -6,16 +6,16 @@ import tkinter as tk
 from tkinter import ttk
 from tkintermapview import TkinterMapView
 import ttkbootstrap as tb
-from ttkbootstrap.constants import *
 import math
-import pandas as pd  # necessário para manipulação de DataFrame
+import pandas as pd
 
+# Aplicativo principal para visualização e análise de imóveis com interface gráfica e mapa interativo
 class ImovelApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Propriedades com Mapa")
 
-        # --- leitura direta do CSV já limpo ---
+        # Carrega o dataset de imóveis e prepara a lista de imóveis para exibição
         csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/dataset_cleaned.csv"))
         self.df = pd.read_csv(csv_path)
         if self.df['Preço'].dtype != float:
@@ -28,7 +28,7 @@ class ImovelApp:
             )
         self.lista_imoveis = self.df.copy()
 
-        # --- frame superior: centraliza os controles ---
+        # Monta a interface gráfica principal (combobox, botões, frames)
         frame_top = tk.Frame(root)
         frame_top.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
         control_frame = tk.Frame(frame_top)
@@ -63,29 +63,19 @@ class ImovelApp:
         )
         self.btn_avaliar.pack(side=tk.LEFT, padx=5)
 
-        # --- frame do mapa: ocupa toda área restante ---
+        # Área do mapa interativo
         frame_map = tk.Frame(root)
         frame_map.pack(fill=tk.BOTH, expand=True)
-
         self.map_widget = TkinterMapView(frame_map, corner_radius=0)
         self.map_widget.set_position(-37.8136, 144.9631)
         self.map_widget.set_zoom(10)
         self.map_widget.pack(fill=tk.BOTH, expand=True)
 
-
+        # Área para exibir informações detalhadas do imóvel selecionado
         self.info_frame = tk.Frame(root)                 
         self.info_frame.pack(fill=tk.BOTH, padx=10, pady=5)
 
-        # Exemplo: coordenadas aproximadas para alguns bairros
-        self.bairros_coords = {
-            "Richmond": [(-37.82, 144.99), (-37.82, 145.01), (-37.81, 145.01), (-37.81, 144.99), (-37.82, 144.99)],
-            "Hawthorn": [(-37.83, 145.03), (-37.83, 145.05), (-37.82, 145.05), (-37.82, 145.03), (-37.83, 145.03)],
-            "Fitzroy": [(-37.80, 144.97), (-37.80, 144.99), (-37.79, 144.99), (-37.79, 144.97), (-37.80, 144.97)],
-            "Carlton": [(-37.80, 144.96), (-37.80, 144.98), (-37.79, 144.98), (-37.79, 144.96), (-37.80, 144.96)],
-            "St Kilda": [(-37.87, 144.97), (-37.87, 144.99), (-37.86, 144.99), (-37.86, 144.97), (-37.87, 144.97)],
-        }
-        self.bairro_path = None
-
+    # Exibe detalhes do imóvel selecionado e destaca no mapa
     def exibir_detalhes(self):
         escolha = self.combo_imovel.get()
         if not escolha.startswith("Imovel "):
@@ -138,21 +128,19 @@ class ImovelApp:
             )
             lbl.grid(row=r, column=c, sticky="w", padx=10, pady=2)
 
-        # self.label_info.config(text="\n".join(info))
-
         if lat and lon:
             self.map_widget.set_position(lat, lon)
             self.map_widget.set_zoom(14)
             self.map_widget.delete_all_marker()
             self.map_widget.set_marker(lat, lon, text=escolha)
 
+    # Abre popup para recomendar bairro e imóvel, destaca resultados no mapa
     def abrir_formulario_recomendacao(self):
         form = tk.Toplevel(self.root)
         form.title("Recomendação de Bairro e Imóvel")
         frame = ttk.Frame(form, padding=20)
         frame.pack(fill="both", expand=True)
 
-        # Mensagem de orientação
         msg = (
             "O imóvel recomendado será destacado com um marcador especial no mapa.\n"
             "Os demais imóveis do bairro aparecerão como círculos vermelhos claros."
@@ -176,9 +164,10 @@ class ImovelApp:
         resultado_label = tk.Label(frame, text="", justify=tk.LEFT, font=("Segoe UI", 10))
         resultado_label.grid(row=4, column=0, columnspan=2, pady=10)
 
-        # Armazena os paths dos círculos desenhados
+        # Lista para armazenar os círculos desenhados no mapa
         drawn_circles = []
 
+        # Busca e recomenda o melhor imóvel de acordo com os critérios do usuário
         def buscar_melhor_bairro():
             try:
                 carros = int(entry_carros.get())
@@ -188,7 +177,6 @@ class ImovelApp:
                 resultado_label.config(text="Preencha todos os campos corretamente.")
                 return
 
-            # Agora exige pelo menos o número de quartos e garagem desejados
             df_filtrado = self.df[
                 (self.df['Preço'] <= preco_max) &
                 (self.df['Quartos'] >= quartos) &
@@ -214,7 +202,7 @@ class ImovelApp:
             ]
             resultado_label.config(text="\n".join(info) + "\n\n(Imóveis do bairro destacados no mapa)")
 
-            # Marca o imóvel recomendado no mapa
+            # Destaca o imóvel recomendado no mapa
             lat = melhor.get("Latitude", None)
             lon = melhor.get("Longitude", None)
             self.map_widget.delete_all_marker()
@@ -223,7 +211,7 @@ class ImovelApp:
                 self.map_widget.set_zoom(14)
                 self.map_widget.set_marker(lat, lon, text="Imóvel recomendado")
 
-            # Limpa círculos anteriores antes de desenhar novos
+            # Remove círculos anteriores antes de desenhar novos
             for path in list(drawn_circles):
                 try:
                     if hasattr(path, "delete"):
@@ -233,7 +221,8 @@ class ImovelApp:
                 except Exception:
                     pass
                 drawn_circles.remove(path)
-            # Marca todos os imóveis do bairro no mapa como círculos transparentes (simulados)
+
+            # Destaca todos os imóveis do bairro como círculos no mapa
             bairro = melhor.get("Subúrbio", None)
             if bairro:
                 imoveis_bairro = self.df[self.df['Subúrbio'] == bairro]
@@ -256,10 +245,9 @@ class ImovelApp:
         ttk.Button(frame, text="Buscar", command=buscar_melhor_bairro)\
             .grid(row=3, column=0, columnspan=2, pady=10)
 
+        # Limpa o mapa e reseta ao fechar o popup de recomendação
         def resetar_mapa():
-            # Remove todos os marcadores
             self.map_widget.delete_all_marker()
-            # Remove todos os paths desenhados manualmente
             for path in list(drawn_circles):
                 try:
                     if hasattr(path, "delete"):
@@ -269,12 +257,12 @@ class ImovelApp:
                 except Exception:
                     pass
                 drawn_circles.remove(path)
-            # Redefine o centro e zoom do mapa
             self.map_widget.set_position(-37.8136, 144.9631)
             self.map_widget.set_zoom(10)
 
         form.protocol("WM_DELETE_WINDOW", lambda: (resetar_mapa(), form.destroy()))
 
+    # Abre popup para avaliação de preço de imóvel com base em critérios do usuário
     def abrir_formulario_avaliacao(self):
         form = tk.Toplevel(self.root)
         form.title("Avaliação de Preço de Imóvel")
@@ -305,6 +293,7 @@ class ImovelApp:
         resultado_label = tk.Label(frame, text="", justify=tk.LEFT, font=("Segoe UI", 10))
         resultado_label.grid(row=6, column=0, columnspan=2, pady=10)
 
+        # Calcula e exibe o preço médio dos imóveis similares ao informado pelo usuário
         def avaliar_preco():
             suburbio = combo_suburbio.get()
             quartos = entry_quartos.get()

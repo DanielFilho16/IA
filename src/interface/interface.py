@@ -6,8 +6,15 @@ import tkinter as tk
 from tkinter import ttk
 from tkintermapview import TkinterMapView
 import ttkbootstrap as tb
-import math
 import pandas as pd
+import math
+import joblib
+
+def formatar_reais(valor):
+    try:
+        return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
+    except Exception:
+        return f"R$ {valor}"
 
 # Aplicativo principal para visualização e análise de imóveis com interface gráfica e mapa interativo
 class ImovelApp:
@@ -16,7 +23,7 @@ class ImovelApp:
         self.root.title("Propriedades com Mapa")
 
         # Carrega o dataset de imóveis e prepara a lista de imóveis para exibição
-        csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/dataset_cleaned.csv"))
+        csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/dataset_com_gbm.csv"))
         self.df = pd.read_csv(csv_path)
         if self.df['Preço'].dtype != float:
             self.df['Preço'] = (
@@ -95,7 +102,7 @@ class ImovelApp:
             f"Endereço: {safe_str(dados.get('Endereço'))}",
             f"Salas: {safe_str(dados.get('Salas'))}",
             f"Tipo: {safe_str(dados.get('Tipo'))}",
-            f"Preço real: ${dados.get('Preço real', dados.get('Preço')):,.2f}",
+            f"Preço real: {formatar_reais(dados.get('Preço real', dados.get('Preço')))}",
             f"Preço Previsto LightGBM: {safe_str(dados.get('Preço Previsto LightGBM'))}",
             f"Distância: {safe_str(dados.get('Distância'))}",
             f"Código postal: {safe_str(dados.get('Código postal'))}",
@@ -169,12 +176,21 @@ class ImovelApp:
 
         # Busca e recomenda o melhor imóvel de acordo com os critérios do usuário
         def buscar_melhor_bairro():
+            # Checagem de campos obrigatórios
+            if not entry_carros.get().strip() or not entry_quartos.get().strip() or not entry_preco.get().strip():
+                resultado_label.config(text="Preencha todos os campos obrigatórios (carros, quartos e preço máximo).")
+                return
             try:
                 carros = int(entry_carros.get())
                 quartos = int(entry_quartos.get())
                 preco_max = float(entry_preco.get())
-            except ValueError:
-                resultado_label.config(text="Preencha todos os campos corretamente.")
+                # Checagem de faixa
+                if not (0 <= carros <= 30):
+                    raise ValueError("Carros deve ser inteiro entre 0 e 30.")
+                if not (0 <= quartos <= 30):
+                    raise ValueError("Quartos deve ser inteiro entre 0 e 30.")
+            except ValueError as e:
+                resultado_label.config(text=str(e) if str(e) else "Preencha todos os campos corretamente.")
                 return
 
             df_filtrado = self.df[
@@ -191,11 +207,13 @@ class ImovelApp:
                 abs(df_filtrado['Quartos'] - quartos)
             )
             melhor = df_filtrado.sort_values(['distancia', 'Preço']).iloc[0]
+            # Descobrir o número do imóvel recomendado (índice + 1)
+            num_imovel = melhor.name + 1 if hasattr(melhor, 'name') else 'N/A'
             info = [
                 f"Melhor bairro para você: {melhor['Subúrbio']}",
-                f"Imóvel recomendado:",
+                f"Imóvel recomendado (nº {num_imovel}):",
                 f"  Endereço: {melhor.get('Endereço', 'N/A')}",
-                f"  Preço: R$ {melhor['Preço']:.2f}",
+                f"  Preço: {formatar_reais(melhor['Preço'])}",
                 f"  Quartos: {melhor['Quartos']}",
                 f"  Garagem: {melhor['Garagem']}",
                 f"  Tipo: {melhor.get('Tipo', 'N/A')}",
@@ -209,38 +227,22 @@ class ImovelApp:
             if pd.notnull(lat) and pd.notnull(lon):
                 self.map_widget.set_position(lat, lon)
                 self.map_widget.set_zoom(14)
-                self.map_widget.set_marker(lat, lon, text="Imóvel recomendado")
+                self.map_widget.set_marker(lat, lon, text=f"Imóvel recomendado (nº {num_imovel})")
 
-            # Remove círculos anteriores antes de desenhar novos
-            for path in list(drawn_circles):
-                try:
-                    if hasattr(path, "delete"):
-                        path.delete()
-                    else:
-                        self.map_widget.delete_path(path)
-                except Exception:
-                    pass
-                drawn_circles.remove(path)
-
-            # Destaca todos os imóveis do bairro como círculos no mapa
-            bairro = melhor.get("Subúrbio", None)
-            if bairro:
-                imoveis_bairro = self.df[self.df['Subúrbio'] == bairro]
-                for _, row in imoveis_bairro.iterrows():
-                    lat_b = row.get("Latitude", None)
-                    lon_b = row.get("Longitude", None)
-                    if pd.notnull(lat_b) and pd.notnull(lon_b):
-                        import math
-                        circle_points = []
-                        radius = 0.002
-                        steps = 16
-                        for i in range(steps + 1):
-                            angle = 2 * math.pi * i / steps
-                            dlat = radius * math.cos(angle)
-                            dlon = radius * math.sin(angle)
-                            circle_points.append((lat_b + dlat, lon_b + dlon))
-                        path = self.map_widget.set_path(circle_points, color="#ff8888", width=2)
-                        drawn_circles.append(path)
+            # Desenhar círculos vermelhos para os demais imóveis do bairro
+            bairro = melhor['Subúrbio']
+            similares_bairro = self.df[self.df['Subúrbio'] == bairro]
+            for idx, row in similares_bairro.iterrows():
+                lat_b = row.get('Latitude', None)
+                lon_b = row.get('Longitude', None)
+                if pd.notnull(lat_b) and pd.notnull(lon_b) and idx != melhor.name:
+                    # Gerar pontos para um círculo de raio ~120m
+                    raio = 0.0011  # Aproximadamente 120m em latitude/longitude
+                    pontos = [
+                        (lat_b + math.cos(2*math.pi/36*x)*raio, lon_b + math.sin(2*math.pi/36*x)*raio)
+                        for x in range(37)
+                    ]
+                    self.map_widget.set_path(pontos, color="#ff8888", width=2)
 
         ttk.Button(frame, text="Buscar", command=buscar_melhor_bairro)\
             .grid(row=3, column=0, columnspan=2, pady=10)
@@ -264,6 +266,7 @@ class ImovelApp:
 
     # Abre popup para avaliação de preço de imóvel com base em critérios do usuário
     def abrir_formulario_avaliacao(self):
+
         form = tk.Toplevel(self.root)
         form.title("Avaliação de Preço de Imóvel")
         frame = ttk.Frame(form, padding=20)
@@ -293,7 +296,15 @@ class ImovelApp:
         resultado_label = tk.Label(frame, text="", justify=tk.LEFT, font=("Segoe UI", 10))
         resultado_label.grid(row=6, column=0, columnspan=2, pady=10)
 
-        # Calcula e exibe o preço médio dos imóveis similares ao informado pelo usuário
+        # Carrega o modelo LightGBM treinado
+        modelo_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../modelo_lgb.pkl"))
+        try:
+            modelo = joblib.load(modelo_path)
+        except Exception as e:
+            resultado_label.config(text=f"Erro ao carregar modelo: {e}")
+            return
+
+        # Calcula e exibe o preço médio dos imóveis similares e a previsão do modelo
         def avaliar_preco():
             suburbio = combo_suburbio.get()
             quartos = entry_quartos.get()
@@ -305,37 +316,123 @@ class ImovelApp:
                 resultado_label.config(text="Preencha Subúrbio, Quartos e Banheiros.")
                 return
             try:
-                quartos = int(quartos); banheiros = int(banheiros)
-                if not (0 <= quartos <= 30 and 0 <= banheiros <= 30): raise ValueError
+                quartos = int(quartos)
+                banheiros = int(banheiros)
+                if not (0 <= quartos <= 30 and 0 <= banheiros <= 30):
+                    raise ValueError
             except ValueError:
                 resultado_label.config(text="Quartos e Banheiros devem ser inteiros entre 0 e 30.")
                 return
 
-            garagem = int(garagem) if garagem.strip() else None
-            ano = int(ano) if ano.strip() else None
+            try:
+                garagem = int(garagem) if garagem.strip() else None
+                if garagem is not None and not (0 <= garagem <= 30):
+                    raise ValueError
+            except ValueError:
+                resultado_label.config(text="Garagem deve ser um inteiro entre 0 e 30.")
+                return
+
+            try:
+                ano = int(ano) if ano.strip() else None
+                if ano is not None and not (1900 <= ano <= 2025):
+                    raise ValueError
+            except ValueError:
+                resultado_label.config(text="Ano de Construção deve ser um inteiro entre 1900 e 2025.")
+                return
 
             filtro = (
                 (self.df['Subúrbio'] == suburbio) &
-                (self.df['Quartos'] == quartos) &
-                (self.df['Banheiros'] == banheiros)
+                (self.df['Quartos'] >= quartos) &
+                (self.df['Banheiros'] >= banheiros)
             )
             if garagem is not None:
-                filtro &= (self.df['Garagem'] == garagem)
+                filtro &= (self.df['Garagem'] >= garagem)
             if ano is not None:
-                filtro &= (self.df['Ano de Construção'] == ano)
+                filtro &= (self.df['Ano de Construção'] >= ano)
 
             similares = self.df[filtro]
+            mostrar_similares = True
             if similares.empty:
-                resultado_label.config(text="Nenhum imóvel similar encontrado.")
+                mostrar_similares = False
+
+            if mostrar_similares:
+                preco_medio = similares['Preço'].mean()
+                # Marcar imóveis semelhantes no mapa
+                self.map_widget.delete_all_marker()
+                lats = []
+                lons = []
+                for idx, row in similares.iterrows():
+                    lat = row.get('Latitude', None)
+                    lon = row.get('Longitude', None)
+                    if pd.notnull(lat) and pd.notnull(lon):
+                        lats.append(lat)
+                        lons.append(lon)
+                        num_similar = idx + 1
+                        self.map_widget.set_marker(lat, lon, text=f"Imóvel nº{num_similar}: {formatar_reais(row['Preço'])}")
+                # Centralizar e dar zoom na região dos similares
+                if lats and lons:
+                    lat_centro = sum(lats) / len(lats)
+                    lon_centro = sum(lons) / len(lons)
+                    self.map_widget.set_position(lat_centro, lon_centro)
+                    self.map_widget.set_zoom(14)
+            else:
+                preco_medio = None
+                self.map_widget.delete_all_marker()
+            # Prepara os dados para o modelo
+            X_pred = pd.DataFrame([{
+                'Subúrbio': suburbio,
+                'Quartos': quartos,
+                'Banheiros': banheiros,
+                'Garagem': garagem if garagem is not None else self.df['Garagem'].mode()[0],
+                'Ano de Construção': ano if ano is not None else self.df['Ano de Construção'].mode()[0]
+            }])
+
+            # Se o modelo foi treinado com dummies, alinhe as colunas
+            X_pred = pd.get_dummies(X_pred)
+            if hasattr(modelo, 'feature_names_in_'):
+                faltantes = [col for col in modelo.feature_names_in_ if col not in X_pred.columns]
+                if faltantes:
+                    X_pred = pd.concat([X_pred, pd.DataFrame(0, index=X_pred.index, columns=faltantes)], axis=1)
+                X_pred = X_pred[modelo.feature_names_in_]
+
+            try:
+                preco_previsto = modelo.predict(X_pred)[0]
+            except Exception as e:
+                resultado_label.config(text=f"Erro ao prever com o modelo: {e}")
                 return
 
-            preco_medio = similares['Preço'].mean()
-            resultado_label.config(
-                text=f"Preço médio: R$ {preco_medio:.2f}\n({len(similares)} encontrado(s))"
-            )
+
+            if mostrar_similares:
+                resultado_label.config(
+                    text=f"Preço médio: {formatar_reais(preco_medio)}\n"
+                         f"({len(similares)} encontrado(s))\n"
+                         f"Preço estimado pelo modelo: {formatar_reais(preco_previsto)}\n"
+                         f"Imóveis similares estão destacados no mapa com seu número e preço."
+                )
+            else:
+                resultado_label.config(
+                    text=f"Nenhum imóvel similar encontrado.\n"
+                         f"Preço estimado pelo modelo: {formatar_reais(preco_previsto)}"
+                )
+
+            # Marcar imóveis semelhantes no mapa
+            self.map_widget.delete_all_marker()
+            for _, row in similares.iterrows():
+                lat = row.get('Latitude', None)
+                lon = row.get('Longitude', None)
+                if pd.notnull(lat) and pd.notnull(lon):
+                    self.map_widget.set_marker(lat, lon, text=f"Similar: {formatar_reais(row['Preço'])}")
 
         ttk.Button(frame, text="Avaliar", command=avaliar_preco)\
             .grid(row=5, column=0, columnspan=2, pady=10)
+
+        # Limpa o mapa e reseta ao fechar o popup de avaliação
+        def resetar_mapa_avaliacao():
+            self.map_widget.delete_all_marker()
+            self.map_widget.set_position(-37.8136, 144.9631)
+            self.map_widget.set_zoom(10)
+
+        form.protocol("WM_DELETE_WINDOW", lambda: (resetar_mapa_avaliacao(), form.destroy()))
 
 
 if __name__ == "__main__":
